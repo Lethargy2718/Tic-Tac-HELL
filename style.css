@@ -1,15 +1,7 @@
-*, *::before, *::after {
-    box-sizing: border-box;
+* {
     padding: 0;
     margin: 0;
-}
-
-:root {
-    --grid-size: 40vh;
-    --grid-cells: 3;
-    --cell-size: calc(40vh / var(--grid-cells));
-    --obj-size: calc(var(--cell-size) / 2.5);
-    --player-size: calc(var(--cell-size) / 3);
+    box-sizing: border-box;
 }
 
 body {
@@ -17,44 +9,14 @@ body {
     justify-content: center;
     align-items: center;
     height: 100svh;
-    width: 100%;
-    background-color: black;
 }
 
-.grid-container {
-    background-color: red;
-    width: min(var(--grid-size), 100vw);
-    height: var(--grid-size);
+canvas {
+    height: 40vh;
+    width: clamp(0, 40vh, 100vw);
     display: grid;
-    grid-template-columns: repeat(var(--grid-cells), var(--cell-size));
-    grid-template-rows: repeat(var(--grid-cells), var(--cell-size)); 
-    position: relative;
-
-}
-
-.grid-cell {
-    transition: all 0.1s ease-in-out;
-    background-color: gray;
-    border: 2px solid red;
-}
-
-
-.falling-object {
-    width: var(--obj-size);
-    height: var(--obj-size);
-    background-color: red;
-    position: absolute; 
-}
-
-#hide {
-    visibility: hidden;
-}
-
-#player {
-    position: absolute;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
     background-color: black;
-    width: var(--player-size);
-    height: var(--player-size);
-    top: calc(0.5 * (5 * var(--cell-size) - var(--player-size)));
-    left: calc(0.5 * (3 * var(--cell-size) - var(--player-size)));
 }
+
