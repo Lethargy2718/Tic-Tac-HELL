@@ -1,34 +1,30 @@
+const Player = function(name, marker) {
+
+    function turn() {
+        return true
+    }
+
+    return { name, marker, turn }
+}
+
+const player = Player("Lethargy", "X")
+
+// Handles the rendering of the canvas.
 const GameArea = (function() {
     const canvas = document.querySelector("canvas")
     canvas.width = 540
     canvas.height = 540
     const cellSize = canvas.width / 3
     const ctx = canvas.getContext("2d")
-    let frameNo = 0
-
+    
     const start = function () {
         document.body.insertBefore(canvas, document.body.childNodes[0])
         drawGrid()
-        bindEvents()
     }
 
-    const bindEvents = function() {
-        window.addEventListener('keydown', function (e) {
-            GameArea.keys = (GameArea.keys || [])
-            GameArea.keys[e.key] = true
-        })
-        window.addEventListener('keyup', function (e) {
-            GameArea.keys[e.key] = false
-        })
-    }
-    
     const clear = function () {
         ctx.clearRect(0, 0, canvas.width, canvas.height)
         drawGrid()
-    }
-
-    const stop = function () {
-        clearInterval(interval)
     }
 
     const drawGrid = function() {
@@ -37,6 +33,7 @@ const GameArea = (function() {
     
         ctx.strokeStyle = "#ddd" 
         ctx.lineWidth = 1
+        ctx.globalCompositeOperation = "destination-atop"
     
         for (let x = 0; x <= width; x += cellSize) {
             ctx.beginPath()
@@ -51,50 +48,40 @@ const GameArea = (function() {
             ctx.lineTo(width, y)
             ctx.stroke()
         }
-
-        drawCells()
     }
 
-    const drawCells = function() {
-        let x = 0
-        let y = 0
+    const data = () => ({ canvas, cellSize, ctx })
 
-        for(let i = 0; i < 3; i++) {
-            x = GameArea.cellSize * i
-            for(let j = 0; j < 3; j++)
-                y = GameArea.cellSize * j
-                drawCell(x, y)
-        }
-    }
-    
-    const drawCell = function(x, y) {
-        // TODO
-    }
-
-    const data = () => ({ canvas, cellSize, ctx, frameNo })
-
-    return { start, clear, stop, data }
+    return { start, clear, data }
 
 })()
 
-
+// Handles the bullet hell logic.
 const GameBoard = (function() {
-    const speed = 5 // playerPiece
-    const minSpeed = 2 // Obstacles
-    const maxSpeed = 5 // Obstacles
-    const fps = 60
+    const speed = 1 // playerPiece
+    const minSpeed = 0.5 // Obstacles
+    const maxSpeed = 1.25 // Obstacles
+    const fps = 240
     const directions = ["right", "left", "top", "bottom"]
     const gameData = GameArea.data()
-    const myObstacles = []
+    const cellSize = gameData.cellSize
+    const ctx = gameData.ctx
+    const indexMapping = {
+        0: [0, cellSize],
+        1: [cellSize, 2 * cellSize],
+        2: [2 * cellSize, 3 * cellSize]
+    }
+    const markerMapping = {}
+    let myObstacles = []
     const playerPiece = Component(30, 30, "red", 0.5 * (gameData.canvas.width - 30), 0.5 * (gameData.canvas.width - 30))
+    let keys
+    let frameNo = 0
+    let interval
+    
 
     // Component factory
-    function Component(width, height, color, x, y) {
-        let speedX = 0
-        let speedY = 0  
-        
+    function Component(width, height, color, x, y, speedX = 0, speedY = 0) {
         const update = function() {
-            ctx = gameData.ctx
             ctx.fillStyle = color
             ctx.fillRect(x, y, width, height)
         }
@@ -131,29 +118,46 @@ const GameBoard = (function() {
         }
 
         const getSizes = () => ({ x, y, width, height })
+
+        const setSpeed = function(speedx, speedy) {
+            speedX = speedx === false ? speedX : speedx
+            speedY = speedy === false ? speedY : speedy
+        }
+
+        const checkCell = function() {
+            const centerX = x + width / 2
+            const centerY = y + height / 2
+
+            const findRange = function(center) {
+                for (let key in indexMapping) {
+                    if (center >= indexMapping[key][0] && center < indexMapping[key][1]) return key
+                }
+            }
             
-        return { update, newPos, crashWith, limit, getSizes, speedX, speedY }
+            return { cellX: findRange(centerX), cellY: findRange(centerY) }
+        }
+
+        return { update, newPos, crashWith, limit, getSizes, checkCell, setSpeed }
     }
     
     // Obstacle factory
     function Obstacle(min, max, color, direction="") {
         const size = Math.random() * (max - min) + min
-        let x = 0
+        let x = 0 
         let y = 0
+        let speedX = 0
+        let speedY = 0
         const width = size
         const height = size
         direction = direction || directions[Math.floor(Math.random() * directions.length)]
-        let speedX = 0
-        let speedY = 0
+        
         const speed = Math.random() * (maxSpeed - minSpeed) + minSpeed
-
-        const { update, newPos, getSizes } = Component(width, height, color, x, y)
 
         const rand = function(r1, r2) {
             return Math.random() * (r2 - r1) + r1
         }
 
-        const spawn = function() {
+        const generateSpawnLocation = function() {
             const canvas = gameData.canvas
             switch(direction) {
                 case "right": 
@@ -178,35 +182,94 @@ const GameBoard = (function() {
                     break
             }
         }
-        
-        return { update, newPos, getSizes, rand, spawn }
+
+        generateSpawnLocation()
+
+        const { update, newPos, getSizes } = Component(width, height, color, x, y, speedX, speedY)
+
+        return { update, newPos, getSizes, rand, generateSpawnLocation }
     }
-    
+
+    // Marker factory
+    function Marker(type, indexX, indexY) {
+
+        const drawX = function() {
+            const offset = 35
+            const x = indexX * cellSize
+            const y = indexY * cellSize
+            
+            ctx.lineWidth = 3
+            ctx.globalCompositeOperation='destination-over';
+            ctx.beginPath()
+            ctx.moveTo(x + offset, y + offset)
+            ctx.lineTo(x + cellSize - offset, y + cellSize - offset)
+            ctx.moveTo(x + cellSize - offset, y + offset)
+            ctx.lineTo(x + offset, y + cellSize - offset)
+            ctx.stroke()
+        }
+
+        const drawO = function() {
+            // DRAW O
+        }
+
+        return { draw: type === "X" ? drawX : drawO }
+    }
+
+    // Detects crashes/collisions and removes the obstacles that are out of the canvas.
+    const checkCrashAndClean = function() {
+        myObstacles = myObstacles.filter(obstacle => {
+            // if (playerPiece.crashWith(obstacle)) {
+            //     console.log("CRASHHHHH")
+            //     stopGame()
+            //     return false
+            // }
+        
+            const { x, y, width, height } = obstacle.getSizes()
+            return x + width >= 0 && x <= gameData.canvas.width && y + height >= 0 && y <= gameData.canvas.height
+        })
+    }
+
+    const updateMarkers = function() {
+        const { cellX, cellY } = playerPiece.checkCell()
+        if (markerMapping[[cellX, cellY]]) return
+        markerMapping[[cellX, cellY]] = player.marker
+    }
+
+    const renderMarkers = function() {
+        const arr = Object.entries(markerMapping) // [['1,1' , 'X' ]]
+        arr.forEach(cell => {
+            const marker = Marker(cell[1], cell[0][0], cell[0][2])
+            marker.draw()
+        })
+    }
+
+    const bindEvents = function() {
+        window.addEventListener('keydown', function (e) {
+            keys = (keys || [])
+            keys[e.key] = true
+        })
+        window.addEventListener('keyup', function (e) {
+            keys[e.key] = false
+        })
+    }
+
     // Returns true every n frames.
-    function everyInterval(n) {
-        if ((gameData.frameNo / n) % 1 === 0) { return true }
+    const everyInterval = function(n) {
+        if ((frameNo / n) % 1 === 0) { return true }
         return false
     }
     
     // Updates the game every frame.
     const updateGameArea = function() {
-        // Collision //
-        myObstacles.forEach(obstacle => {
-            if (playerPiece.crashWith(obstacle)) {
-                // Remember to add collision logic here (game over or whatever)
-                GameArea.stop()
-                return
-            }
-        })
+        checkCrashAndClean()       
         
         // General //
         GameArea.clear()
-        GameArea.frameNo += 1
-    
+        frameNo++
+
         // Obstacles //
-        if (everyInterval(fps / 4) || GameArea.frameNo === 1) {
+        if (everyInterval(fps / 4) || frameNo === 1) {
             const obstacle = Obstacle(20, 40, "green")
-            obstacle.spawn()
             myObstacles.push(obstacle)
         }
         myObstacles.forEach(obstacle => {
@@ -217,23 +280,32 @@ const GameBoard = (function() {
         // playerPiece //
         playerPiece.speedX = 0
         playerPiece.speedY = 0
-        if (GameArea.keys && GameArea.keys["ArrowLeft"]) { playerPiece.speedX = -speed }
-        if (GameArea.keys && GameArea.keys["ArrowRight"]) { playerPiece.speedX = speed }
-        if (GameArea.keys && GameArea.keys["ArrowUp"]) { playerPiece.speedY = -speed }
-        if (GameArea.keys && GameArea.keys["ArrowDown"]) { playerPiece.speedY = speed }
+        playerPiece.setSpeed(0,0)
+        if (keys && keys["ArrowLeft"]) { playerPiece.setSpeed(-speed, false) }
+        if (keys && keys["ArrowRight"]) { playerPiece.setSpeed(speed, false) }
+        if (keys && keys["ArrowUp"]) { playerPiece.setSpeed(false, -speed) }
+        if (keys && keys["ArrowDown"]) { playerPiece.setSpeed(false, speed) }
         playerPiece.newPos()
         playerPiece.limit()
         playerPiece.update()
-        console.log("Update successful.")
-    }
-    
+
+        // Markers 
+        if (player.turn()) updateMarkers()
+        renderMarkers()
+    }    
+
     const startGame = function() {
         GameArea.start()
-        const interval = setInterval(GameBoard.updateGameArea, 1000 / fps)
+        interval = setInterval(updateGameArea, 1000 / fps)
+        bindEvents()
         console.log("Game started.")
     }
 
-    return { startGame, updateGameArea }
+    const stopGame = function() {
+        clearInterval(interval)
+    }
+
+    return { startGame }
     
 })()
 
