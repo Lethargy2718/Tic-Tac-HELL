@@ -22,8 +22,6 @@ const Computer = function(marker) {
     return { marker }
 }
 
-// 0 % 2 = 0, in the first turn, the second player in the array is chosen, aka O
-
 const player = Player("Lethargy", "X")
 const computer = Computer("O")
 
@@ -72,7 +70,9 @@ const GameManager = (function() {
     let interval
     let canPlaceMarker = true
     
-    const keys = { "ArrowUp": false, "ArrowDown": false, "ArrowRight": false, "ArrowLeft": false }
+    const keys = { "ArrowUp": false, "ArrowDown": false, "ArrowRight": false, "ArrowLeft": false,
+                   "w": false, "s": false, "a": false, "d": false }
+
     const markerMapping = {} // Maps each grid cell index to the marker currently on it (X or O).
     let currentObstacles = []
 
@@ -85,7 +85,7 @@ const GameManager = (function() {
 
     const bindEvents = function() {
         window.addEventListener('keydown', function(e) {
-            if (e.key === "a" && canPlaceMarker) {
+            if (e.key === " " && canPlaceMarker) {
                 PubSub.publish("marker:willplace")
                 return
             }
@@ -215,14 +215,14 @@ const StateManager = (function() {
     PubSub.subscribe("rendering:ended", () => {
         const canvas = GameManager.getCanvasData().canvas
         let obstacles = GameManager.getObstacles().filter(obstacle => {
-            // PlayerObj.crashWith(obstacle)
+            PlayerObj.crashWith(obstacle)
             const { x, y, size } = obstacle.getSizes()
             // Keeps the obstacle in the array only if it's still inside the canvas, effectively deleting the ones outside.
             return (x + size >= 0 && x <= canvas.width && y + size >= 0 && y <= canvas.height)
         })
         
         if (everyInterval(GameManager.getFps() / 4)) { // Creates a new obstacle every fps / 4 frames and on the first frame.
-            const obstacle = Obstacle(20, 40, "green")
+            const obstacle = Obstacle(20, 50, "green")
             obstacles.push(obstacle)
         }
         GameManager.setObstacles(obstacles)
@@ -248,10 +248,10 @@ const PlayerObj = (function(size, color, posX, posY, speed) {
     const move = function(keys) {
         let speedX = 0
         let speedY = 0
-        if (keys && keys["ArrowLeft"]) { speedX = -speed } // All this is to handle fluid movement in all 8 directions and update the player's location.
-        if (keys && keys["ArrowRight"]) { speedX = speed }
-        if (keys && keys["ArrowUp"]) { speedY = -speed }
-        if (keys && keys["ArrowDown"]) { speedY = speed }
+        if (keys && (keys["ArrowLeft"] || keys["a"])) { speedX = -speed } // All this is to handle fluid movement in all 8 directions and update the player's location.
+        if (keys && (keys["ArrowRight"] || keys["d"])) { speedX = speed }
+        if (keys && (keys["ArrowUp"] || keys["w"])) { speedY = -speed }
+        if (keys && (keys["ArrowDown"] || keys["s"])) { speedY = speed }
         x += speedX
         y += speedY
         limit()
@@ -294,12 +294,12 @@ const PlayerObj = (function(size, color, posX, posY, speed) {
 
     return { getColor, getSizes, crashWith, checkCell, move }
 
-})(30, "red", 270, 270, 1) 
+})(30, "red", 270 - 15, 270 - 15, 1) 
 
 function Obstacle(min, max, color, direction="") {
-    const { ctx, canvas } = Renderer.data()
-    const minSpeed = 0.25
-    const maxSpeed = 1.25
+    const canvas = Renderer.data().canvas
+    const minSpeed = 0.5
+    const maxSpeed = 1.5
     const directions = ["right", "left", "top", "bottom"] // Obstacle possible directions
     const size = Math.random() * (max - min) + min // Picks a random size for the obstacle based on the specified range.
     let x = 0 
@@ -389,7 +389,6 @@ function Marker(type, indexX, indexY) {
     return { draw: (type === "X" ? drawX : drawO) }
 }
 
-
 const TurnManager = (function() {
     let turns = 1
     let currentPlayer = player
@@ -426,7 +425,7 @@ const TurnManager = (function() {
     // Computer's actions.
     PubSub.subscribe("turn:computer", () => {
         const markerMapping = GameManager.getMarkerMapping()
-        AI.makeRandomMove()
+        AI.makeRandomMove(markerMapping)
     })    
 
     // Checks if the player can even place a marker on the cell they're on before publishing the event of placing.
@@ -454,7 +453,6 @@ const TurnManager = (function() {
     return { getCurrentPlayer }
 })()
 
-
 // The AI. Currently picks random moves. Might add minimax later.
 const AI = (function() {
     const makeRandomMove = function(markerMapping) {
@@ -471,6 +469,7 @@ const AI = (function() {
             const [x, y] = emptyCells[Math.floor(Math.random() * emptyCells.length)]
             GameManager.changeMarkerMapping(x, y)
             console.log("AI picked a random move: ", x, y)
+            PubSub.publish("marker:placed")
             return true
         }
         return false
