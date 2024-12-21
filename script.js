@@ -5,7 +5,7 @@ const Player = function(name) {
     return { name, setMarker, getMarker }
 }
 
-const player = Player("Lethargy")
+const player = Player("Player")
 const computer = Player("AI")
 
 const Players = [player, computer]
