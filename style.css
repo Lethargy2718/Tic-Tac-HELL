@@ -1,3 +1,66 @@
+/*---------Reset and variables---------*/
+
+:root {
+    --clr-prim: #09090b;
+    --clr-sec: #18181b;
+    --clr-other: #27272a;
+    --clr-text: #f4f4f5;
+    --clr-titles: #d4d4d8;
+    --filter: invert(96%) sepia(98%) saturate(507%) hue-rotate(175deg) brightness(95%) contrast(85%);
+    --box-shadow-color: rgb(0,0,0,0.3);
+    --box-shadow: 16px 16px 8px 8px var(--box-shadow-color);
+
+
+    --gap-main: 1rem;
+    --border-radius: 16px;
+    --header-footer-height: clamp(50px, 50px + 2.5vh ,100px);
+    --text-height: 60px;
+    --font-size: clamp(0.55rem, 0.6rem + 0.2vw, 1.2rem);
+}
+
+
+*, *::before, *::after {
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+    color: var(--clr-text);
+    line-height: 1.5;
+    transition: all 0.2s ease-in-out;
+}
+
+*:not(i) {
+    font-family: quicksand;
+}
+
+ul, li {
+    list-style-type: none;
+}
+
+a {
+    text-decoration: none;
+}
+
+h1, h2, h3, h4, h5, h6 { color: var(--clr-titles) }
+
+body {
+    background-color: var(--clr-prim);
+}
+
+button {
+    background-color: var(--clr-prim);
+    border-radius: calc(0.5 * var(--border-radius));
+    border: none;
+}
+
+button:hover {
+    background-color: var(--clr-text);
+    color: var(--clr-prim);
+    cursor: pointer;
+}
+
+/*--------------------------------------*/
+
+
 * {
     padding: 0;
     margin: 0;
@@ -5,18 +68,147 @@
 }
 
 body {
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    display: grid;
     height: 100svh;
+    grid-template-rows: var(--header-footer-height) 1fr 1fr 1fr var(--header-footer-height);
 }
 
 canvas {
     height: 40vh;
     width: clamp(0, 40vh, 100vw);
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    grid-template-rows: repeat(3, 1fr);
     background-color: black;
+    place-self: center;
 }
 
+header {
+    position: relative;
+    background-color: red;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--clr-sec);
+    filter: drop-shadow(0em 1em 1em var(--box-shadow-color));
+    padding: var(--gap-main);
+}
+
+#icons > i {
+    font-size: 2rem;
+    transition: all 0.5s ease-in-out;
+    padding: 0 var(--gap-main);
+}
+
+.fa-cog:hover {
+    transform: rotate(360deg) scale(1.2);
+    cursor: pointer;
+}
+
+.fa-question:hover {
+    transform: scale(1.2);
+    cursor: pointer;
+}
+
+footer {
+    display: grid;
+    place-content: center;
+    background-color: var(--clr-sec);
+    filter: drop-shadow(0em -1em 1em var(--box-shadow-color));
+}
+
+.text {
+    display: grid;
+    place-content: center;
+}
+
+::backdrop {
+    opacity: 10;
+}
+
+dialog, form, label, input, legend, .form-buttons *, dialog h1 {
+    color: var(--clr-text);
+}
+
+dialog {
+    background-color: var(--clr-other);
+    place-self: center;
+    border-radius: var(--border-radius);
+    padding: calc(1.5 * var(--gap-main));
+    border: none;
+    transform: scale(0);
+
+    & > h1 { /* Modal header */
+        padding-bottom: var(--gap-main);
+        display: grid;
+        place-self: center;
+    }
+
+    &.show {
+        transform: scale(1);
+    }
+}
+
+form {
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
+    font-size: 1em;
+
+    & > div:not(.form-buttons) {
+        display: flex;
+        flex-direction: column;
+    }
+}
+
+select, option {
+    outline: none;
+    border: none;
+    background-color: white;
+    border-radius: 8px;
+    font-size: 1rem;
+    padding: 0.1em;
+    color: var(--clr-prim);
+    border: 2px solid transparent;
+
+    &:hover, &:focus {
+        background-color: var(--clr-text);
+        border: 2px solid black;
+        box-shadow: inset 0px 0px 5px 1px gray;
+    }
+}
+
+option {
+    background-color: white;
+    padding: 0.5em;
+    font-size: 1rem;
+    
+    &:hover {
+        background-color: #e6e6e6;  /* Slightly darker gray for option hover */
+    }
+}
+
+
+.form-buttons {
+    display: flex;
+    gap: var(--gap-main);
+    margin-top: var(--gap-main);
+
+    & * { /* Buttons */
+        padding: 0.5em 0;
+        flex: 1;  
+    }
+}
+
+#action {
+    padding: 1.4em 5em;
+    background-color: var(--clr-other);
+    font-size: 1rem;
+
+    &:hover {
+        background-color: var(--clr-titles);
+        color: var(--clr-prim)
+    }
+}
+
+.help-content > * {
+    padding: 1em 1em;
+}

@@ -1,29 +1,12 @@
-const patterns = [
-    // Rows
-    [[0, 0], [0, 1], [0, 2]],  // Top row
-    [[1, 0], [1, 1], [1, 2]],  // Middle row
-    [[2, 0], [2, 1], [2, 2]],  // Bottom row
-
-    // Columns
-    [[0, 0], [1, 0], [2, 0]],  // Left column
-    [[0, 1], [1, 1], [2, 1]],  // Middle column
-    [[0, 2], [1, 2], [2, 2]],  // Right column
-
-    // Diagonals
-    [[0, 0], [1, 1], [2, 2]],  // Top-left to bottom-right diagonal
-    [[0, 2], [1, 1], [2, 0]]   // Top-right to bottom-left diagonal
-]
-
-const Player = function(name, marker, difficulty) {
-    return { name, marker, difficulty }
+const Player = function(name) {
+    let marker = null
+    const setMarker = function(newMarker) { marker = newMarker }
+    const getMarker = () => (marker)
+    return { name, setMarker, getMarker }
 }
 
-const Computer = function(marker) {
-    return { marker }
-}
-
-const player = Player("Lethargy", "X", "impossible")
-const computer = Computer("O")
+const player = Player("Lethargy")
+const computer = Player("AI")
 
 const Players = [player, computer]
 
@@ -41,6 +24,7 @@ const PubSub = (function() {
         }
 
         events[eventName] = events[eventName] || []
+        if (events[eventName].includes(callback)) return
         events[eventName].push(callback)
     }
 
@@ -56,7 +40,61 @@ const PubSub = (function() {
         events[eventName] = events[eventName].filter(subscriber => subscriber !== callback)
     }
 
+
+
     return { subscribe, publish, unsubscribe }
+})()
+
+const UIManager = (function() {
+    const mainText = document.querySelector("#text1 > h1")
+    const dialogSettings = document.querySelector("#dialogSettings")
+    const dialogHelp = document.querySelector("#dialogHelp")
+    const submitButton = document.querySelector("#submit")
+    const closeSettingsButton = document.querySelector("#cancel")
+    const closeHelpButton = document.querySelector("#closeHelp")
+    const cog = document.querySelector(".fa-cog")
+    const question = document.querySelector(".fa-question")
+    const markerEl = document.querySelector("#marker")
+    const aiDiffEl = document.querySelector("#ai-difficulty")
+    const obsDiffEl = document.querySelector("#obstacle-difficulty")
+
+    PubSub.subscribe("text:changed", (newText) => {
+        mainText.textContent = newText
+    })
+
+    cog.addEventListener("click", () => {
+        if (GameManager.getGameRunning()) return
+        dialogSettings.showModal()
+        dialogSettings.classList.add("show")
+    })
+
+    closeSettingsButton.addEventListener("click", () => {
+        dialogSettings.classList.remove("show")
+        dialogSettings.close()
+    })
+
+    submitButton.addEventListener("click", (e) => {
+        e.preventDefault()
+        dialogSettings.classList.remove("show")
+        dialogSettings.close()
+        GameManager.init()
+    })
+
+    question.addEventListener("click", () => {
+        dialogHelp.showModal()
+        dialogHelp.classList.add("show")
+    })
+
+    closeHelpButton.addEventListener("click", () => {
+        dialogHelp.close()
+        dialogHelp.classList.remove("show")
+    })
+
+    const getInput = function() {
+        return { marker: markerEl.value, aiDiff: aiDiffEl.value, obsDiff: obsDiffEl.value }
+    }
+
+    return { getInput }
 })()
 
 const GameManager = (function() {
@@ -68,7 +106,9 @@ const GameManager = (function() {
     const ctx = canvas.getContext("2d")
     let frameNo = 0
     let interval
-    let canPlaceMarker = true
+    let canPlaceMarker
+    let gameRunning = false
+    let boundEvents = false
     
     const keys = { "ArrowUp": false, "ArrowDown": false, "ArrowRight": false, "ArrowLeft": false,
                    "w": false, "s": false, "a": false, "d": false }
@@ -81,18 +121,40 @@ const GameManager = (function() {
     let currentObstacles = []
 
     const init = function() {
-        bindEvents()
+        currentObstacles = []
         interval = setInterval(Renderer.render, 1000 / fps) // Updates the game so that it runs at fps (the variable) frames per second.
         PubSub.subscribe("game:ended", endGame)
-        console.log("Game started.")
+        AI.setScores()
+        PlayerObj.resetPos()
+        bindEvents()
+        player.setMarker(UIManager.getInput().marker)
+        computer.setMarker(player.getMarker() === "X" ? "O" : "X")
+        canPlaceMarker = player.getMarker() === "X" ? true : false
+        PubSub.publish("text:changed", (
+            `${player.getMarker() === "X" ? player.name : computer.name }'S TURN`
+        ))
+        if (player.getMarker() === "O") PubSub.publish("marker:placed")
+        gameRunning = true
     }
 
     const bindEvents = function() {
+        if (boundEvents) return
+
         window.addEventListener('keydown', function(e) {
+            if (e.key === "q") {
+                if (GameManager.getGameRunning()) {
+                    PubSub.publish("game:ended")
+                    PubSub.publish("text:changed", ("PRESS Q TO RESTART"))
+                }
+                else {
+                    GameManager.init()
+                }
+            }
             if (e.key === " " && canPlaceMarker) {
                 PubSub.publish("marker:willplace")
                 return
             }
+
             if (!Object.keys(keys).includes(e.key)) return
             keys[e.key] = true
             PubSub.publish("input:changed", keys)
@@ -103,12 +165,19 @@ const GameManager = (function() {
             keys[e.key] = false
             PubSub.publish("input:changed", keys)
         })
+
+        boundEvents = true
     }
 
     const endGame = function() {
         clearInterval(interval)
+        clearTimeout()
+        frameNo = 0
+        markerMapping.forEach((row, i) => markerMapping[i] = ["","",""])
+        Object.keys(keys).forEach(key => keys[key] = false)
+        canPlaceMarker = false
+        gameRunning = false
     }
-
     const getCanvasData = () => ({ canvas, cellSize, ctx })
 
     const getMarkerMapping = () => (markerMapping)
@@ -125,6 +194,8 @@ const GameManager = (function() {
 
     const getKeys = () => (keys)
 
+    const getGameRunning = () => (gameRunning)
+
     const togglePlaceMarker = function(newOption) {
         canPlaceMarker = newOption
     }
@@ -132,13 +203,13 @@ const GameManager = (function() {
     const changeMarkerMapping = (x, y) => {
         if(!markerMapping[x][y]) {
             const currentPlayer = TurnManager.getCurrentPlayer()
-            markerMapping[x][y] = currentPlayer.marker
+            markerMapping[x][y] = currentPlayer.getMarker()
             return true
         }
         return false
     }
 
-    return { init, getCanvasData, getMarkerMapping, getObstacles, incFrames, getFrames, changeMarkerMapping, setObstacles, getFps, getKeys, togglePlaceMarker, endGame }
+    return { bindEvents, init, getCanvasData, getMarkerMapping, getObstacles, incFrames, getFrames, changeMarkerMapping, setObstacles, getFps, getKeys, togglePlaceMarker, endGame, getGameRunning }
 })()
 
 // Handles the rendering of the canvas.
@@ -152,7 +223,6 @@ const Renderer = (function() {
         renderGrid()
         update(PlayerObj)
         updateObstacles()
-        
         PlayerObj.move(GameManager.getKeys())
         PubSub.publish("rendering:ended", null)
     }
@@ -209,6 +279,11 @@ const Renderer = (function() {
 })()
 
 const StateManager = (function() {
+    const difficulties = {
+        "normal": {minSize: 10, maxSize: 30, minSpeed: 0.25, maxSpeed: 1, frequency: 3},
+        "hard": {minSize: 20, maxSize: 40, minSpeed: 0.75, maxSpeed: 1.25, frequency: 5},
+        "impossible": {minSize: 25, maxSize: 50, minSpeed: 1.25, maxSpeed: 1.5, frequency: 6}
+    }
 
     const everyInterval = function(n) {
         if ((GameManager.getFrames() / n) % 1 === 0) { return true }
@@ -225,20 +300,19 @@ const StateManager = (function() {
             return (x + size >= 0 && x <= canvas.width && y + size >= 0 && y <= canvas.height)
         })
         
-        if (everyInterval(GameManager.getFps() / 4)) { // Creates a new obstacle every fps / 4 frames and on the first frame.
-            const obstacle = Obstacle(20, 50, "green")
+        let dif = difficulties[UIManager.getInput().obsDiff] // Creates a new obstacle every fps / 4 frames and on the first frame.
+        if (everyInterval(GameManager.getFps() / dif.frequency)) {
+            const obstacle = Obstacle(dif.minSize, dif.maxSize, dif.minSpeed, dif.maxSpeed, "green")
             obstacles.push(obstacle)
         }
         GameManager.setObstacles(obstacles)
-
-    })    
+    })
 })()
 
 const PlayerObj = (function(size, color, posX, posY, speed) {
     let x = posX
     let y = posY
     const { canvas, cellSize } = GameManager.getCanvasData()
-    const getSpeed = () => (speed)
     const getColor = () => (color)
     const getSizes = () => ({ x, y, size })
 
@@ -278,7 +352,8 @@ const PlayerObj = (function(size, color, posX, posY, speed) {
         if ((mybottom < othertop) || (mytop > otherbottom) || (myright < otherleft) || (myleft > otherright)) crash = false
        
         if (crash) {
-            PubSub.publish("game:ended", null)
+            PubSub.publish("text:changed", ("YOU DIED"))
+            PubSub.publish("game:ended")
         }
     }
 
@@ -301,14 +376,15 @@ const PlayerObj = (function(size, color, posX, posY, speed) {
         return { indexX, indexY }
     }
 
-    return { getColor, getSizes, crashWith, checkCell, move }
+    const resetPos = () => [x, y] = [255,255]
 
-})(30, "red", 270 - 15, 270 - 15, 1) 
+    return { getColor, getSizes, crashWith, checkCell, move, resetPos }
 
-function Obstacle(min, max, color, direction="") {
+})(30, "red", 255, 255, 1)
+
+function Obstacle(min, max, minSpeed, maxSpeed, color, direction="") {
+    
     const canvas = Renderer.data().canvas
-    const minSpeed = 0.5
-    const maxSpeed = 1.5
     const directions = ["right", "left", "top", "bottom"] // Obstacle possible directions
     const size = Math.random() * (max - min) + min // Picks a random size for the obstacle based on the specified range.
     let x = 0 
@@ -321,6 +397,7 @@ function Obstacle(min, max, color, direction="") {
     const getSpeed = () => (speed)
     const getColor = () => (color)
     const getSizes = () => ({ x, y, size })
+    const getDiff = () => (difficulty)
 
     // Picks a random value between two specified values.
     const rand = function(r1, r2) {
@@ -361,7 +438,7 @@ function Obstacle(min, max, color, direction="") {
     }
     // Borrows those methods from the component factory.
     
-    return { getColor, getSizes, move, getSpeed }
+    return { getColor, getSizes, move, getSpeed, getDiff }
 }
 
 function Marker(type, indexX, indexY) {
@@ -399,15 +476,29 @@ function Marker(type, indexX, indexY) {
 }
 
 const TurnManager = (function() {
+    const patterns = [
+        // Rows
+        [[0, 0], [0, 1], [0, 2]],  // Top row
+        [[1, 0], [1, 1], [1, 2]],  // Middle row
+        [[2, 0], [2, 1], [2, 2]],  // Bottom row
+    
+        // Columns
+        [[0, 0], [1, 0], [2, 0]],  // Left column
+        [[0, 1], [1, 1], [2, 1]],  // Middle column
+        [[0, 2], [1, 2], [2, 2]],  // Right column
+    
+        // Diagonals
+        [[0, 0], [1, 1], [2, 2]],  // Top-left to bottom-right diagonal
+        [[0, 2], [1, 1], [2, 0]]   // Top-right to bottom-left diagonal
+    ]
     let turns = 1
     let currentPlayer = player
+    let timeout
 
     const pickPlayer = function() {
         currentPlayer = Players[turns % 2]
         turns++
     }
-
-    const getCurrentPlayer = () => (currentPlayer)
 
     // Triggered when anybody places a marker.
     PubSub.subscribe("marker:placed", () => {
@@ -419,13 +510,17 @@ const TurnManager = (function() {
 
         pickPlayer() // Picks the next player.
 
+        PubSub.publish("text:changed", (
+            `${currentPlayer.name}'S TURN`
+        ))
+
         // If the (human) player is picked, the next turn is theirs after 3s. Increases the difficulty :p
         if (currentPlayer === player) {
             GameManager.togglePlaceMarker(true)
         }
         else {
             GameManager.togglePlaceMarker(false) // Prevents the (human) player from playing.
-            setTimeout(() => PubSub.publish("turn:computer"), 1500) // Computer's turn after 3s. Raises difficulty as well.
+            timeout = setTimeout(() => PubSub.publish("turn:computer"), 1500) // Computer's turn after 1.5s. Raises difficulty as well.
         }
     })
 
@@ -456,22 +551,34 @@ const TurnManager = (function() {
     }
 
     const win = function(marker) {
-        console.log(marker.toUpperCase(), "WON")
-        // Stops the game after everything is rendered in order to give the game a chance to render the final move.
+        let text
+        if (marker === "tie") {
+            text = "IT'S A TIE!"
+        }
+
+        else {
+            text = `${currentPlayer.name} WINS!`
+        }
+
+        PubSub.publish("text:changed", (text))
         Renderer.render()
-        GameManager.endGame()
+        PubSub.publish("game:ended")
     }
+
+    PubSub.subscribe("game:ended", () => {
+        clearTimeout(timeout)
+        turns = 1
+        currentPlayer = player
+    })
+
+    const getCurrentPlayer = () => (currentPlayer)
 
     return { getCurrentPlayer, checkWin }
 })()
 
 // Your opponent. Can be very smart, can be very dumb.
 const AI = (function() {
-    const scores = {
-        "X": player.marker === "X" ? -1 : 1,
-        "O": player.marker === "O" ? -1 : 1,
-        'tie': 0
-    }
+    let scores
 
     const difficulty = {
         "normal": 0.5,
@@ -480,9 +587,9 @@ const AI = (function() {
     }
 
     const makeMove = function(board) {
-        const dif = difficulty[player.difficulty]
+        const dif = difficulty[UIManager.getInput().aiDiff]
         console.log(dif)
-        if (Math.random() < difficulty[player.difficulty]) makeRandomMove(board)
+        if (Math.random() < dif) makeRandomMove(board)
         else makeBestMove(board)
     }
 
@@ -493,7 +600,7 @@ const AI = (function() {
         for (let i = 0; i < 3; i++) {
             for (let j = 0; j < 3; j++) {
                 if (board[i][j] === '') {
-                    board[i][j] = computer.marker
+                    board[i][j] = computer.getMarker()
                     let score = minimax(board, 0, false) 
                     board[i][j] = ''
                     if (score > bestScore) {
@@ -503,7 +610,7 @@ const AI = (function() {
                 }
             }
         }
-        board[move.i][move.j] = computer.marker 
+        board[move.i][move.j] = computer.getMarker()
         PubSub.publish("marker:placed") 
     }    
 
@@ -518,7 +625,7 @@ const AI = (function() {
             for (let i = 0; i < 3; i++) {
                 for (let j = 0; j < 3; j++) {
                     if (board[i][j] === '') {
-                        board[i][j] = computer.marker
+                        board[i][j] = computer.getMarker()
                         let score = minimax(board, depth + 1, false)
                         board[i][j] = ''
                         bestScore = Math.max(score, bestScore)
@@ -532,7 +639,7 @@ const AI = (function() {
             for (let i = 0; i < 3; i++) {
                 for (let j = 0; j < 3; j++) {
                     if (board[i][j] === '') {
-                        board[i][j] = player.marker;
+                        board[i][j] = player.getMarker();
                         let score = minimax(board, depth + 1, true)
                         board[i][j] = ''
                         bestScore = Math.min(score, bestScore)
@@ -560,25 +667,20 @@ const AI = (function() {
         }
         return false
     }
+
+    const setScores = function() {
+        scores = {
+            "X": player.getMarker() === "X" ? -1 : 1,
+            "O": player.getMarker() === "O" ? -1 : 1,
+            'tie': 0
+        }
+    }
     
 
-    return { makeMove }
+    return { makeMove, setScores }
 
 })()
 
-GameManager.init()
 
-
-/* TODO
-
--Add minimax. DONE
--Add UI.
--Add the ability to chose your marker.
--Add the ability to restart.
--Stop everything when the game ends (there are some bugs related to this). DONE
--Add AI difficulties. DONE
--Add obstacle difficulties.
-*/
-
-
-
+GameManager.bindEvents()
+Renderer.render()

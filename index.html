@@ -5,11 +5,89 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="script.js" defer></script>
     <link rel="stylesheet" href="style.css">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300..700&family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap" rel="stylesheet">
+
     <title>Document</title>
 </head>
 <body>
-    <canvas>
+    <header>
+        <h1>Tic-Tac-HELL</h1>
+        <div id="icons">
+            <i class="fa-solid fa-question"></i>
+            <i class="fas fa-cog"></i>
+        </div>
         
-    </canvas>
+    </header>
+    <div id="text1" class="text">
+        <h1>PRESS Q TO START</h1>
+    </div>
+    <canvas></canvas>
+    <div id="text2" class="text">
+       <!-- Leave for now -->
+    </div>
+    <footer class="footer">
+        <p>Built by Lethargy2718
+            <a href="https://github.com/Lethargy2718" target="_blank">
+                <i class="fab fa-github"></i>
+            </a>
+        </p>
+    </footer>
+
+    <dialog id="dialogSettings">
+        <h1>Game Settings</h1>
+        <form>
+            <div class="marker">
+                <label for="marker">Choose your Marker</label>
+                <select id="marker" name="marker" required>
+                    <option value="X">X</option>
+                    <option value="O">O</option>
+                </select>
+            </div>
+    
+            <div class="ai-difficulty">
+                <label for="ai-difficulty">AI Difficulty</label>
+                <select id="ai-difficulty" name="ai-difficulty" required>
+                    <option value="normal">Normal</option>
+                    <option value="hard">Hard</option>
+                    <option value="impossible">Impossible</option>
+                </select>
+            </div>
+    
+            <div class="obstacle-difficulty">
+                <label for="obstacle-difficulty">Obstacle Difficulty</label>
+                <select id="obstacle-difficulty" name="obstacle-difficulty" required>
+                    <option value="normal">Normal</option>
+                    <option value="hard">Hard</option>
+                    <option value="impossible">Impossible</option>
+                </select>
+            </div>
+    
+            <div class="form-buttons">
+                <button type="submit" id="submit">Start Game</button>
+                <button type="button" id="cancel">Cancel</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="dialogHelp">
+        <h1>Game Controls</h1>
+        <div class="help-content">
+            <p>-<strong>Movement:</strong> Use the <strong>Arrow keys</strong> or <strong>WASD</strong> to move.</p>
+            <p>-<strong>Place Marker:</strong> Press <strong>Space</strong> to place a marker.</p>
+            <p>-<strong>Settings:</strong> Click on the <strong>Cog icon</strong> to open the settings.</p>
+            <p>-<strong>Start/Stop:</strong> Press <strong>Q</strong> to start or stop the game.</p>
+        </div>
+        
+        <div class="form-buttons">
+            <button id="closeHelp">Close</button>
+        </div>
+    </dialog>
+
+    
 </body>
 </html>
