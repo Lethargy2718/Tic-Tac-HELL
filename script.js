@@ -14,15 +14,15 @@ const patterns = [
     [[0, 2], [1, 1], [2, 0]]   // Top-right to bottom-left diagonal
 ]
 
-const Player = function(name, marker) {
-    return { name, marker }
+const Player = function(name, marker, difficulty) {
+    return { name, marker, difficulty }
 }
 
 const Computer = function(marker) {
     return { marker }
 }
 
-const player = Player("Lethargy", "X")
+const player = Player("Lethargy", "X", "impossible")
 const computer = Computer("O")
 
 const Players = [player, computer]
@@ -73,7 +73,11 @@ const GameManager = (function() {
     const keys = { "ArrowUp": false, "ArrowDown": false, "ArrowRight": false, "ArrowLeft": false,
                    "w": false, "s": false, "a": false, "d": false }
 
-    const markerMapping = {} // Maps each grid cell index to the marker currently on it (X or O).
+    const markerMapping = [
+        ["","",""],
+        ["","",""],
+        ["","",""]
+    ]
     let currentObstacles = []
 
     const init = function() {
@@ -123,13 +127,12 @@ const GameManager = (function() {
 
     const togglePlaceMarker = function(newOption) {
         canPlaceMarker = newOption
-        console.log("canPlaceMarker: ", canPlaceMarker)
     }
 
-    const changeMarkerMapping = (indexX, indexY) => {
-        if(!markerMapping[[indexX, indexY]]) {
+    const changeMarkerMapping = (x, y) => {
+        if(!markerMapping[x][y]) {
             const currentPlayer = TurnManager.getCurrentPlayer()
-            markerMapping[[indexX, indexY]] = currentPlayer.marker
+            markerMapping[x][y] = currentPlayer.marker
             return true
         }
         return false
@@ -191,13 +194,14 @@ const Renderer = (function() {
         
     const renderMarkers = function() {
         const markerMapping = GameManager.getMarkerMapping()
-        const arr = Object.entries(markerMapping) // [['1,1' , 'X' ]]
-        arr.forEach(cell => {
-            let marker = Marker(cell[1], cell[0][0], cell[0][2]) // Marker('X', 1, 1)
-            marker.draw()
-        })
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                const marker = markerMapping[i][j]
+                Marker(marker, i, j).draw()
+            }
+        }
     }
-
+    
     const data = () => ({ canvas, cellSize, ctx })
 
     return { data, render }
@@ -285,11 +289,16 @@ const PlayerObj = (function(size, color, posX, posY, speed) {
         // Finds which "range" (aka cell) the player is standing on in each axis based on the argument passed.
         const findRange = function(center) {
             for (let i = 0; i < 3; i++) {
-                if (center > (i * cellSize) && center <= ((i + 1) * cellSize)) return i
+                if (center > (i * cellSize) && center <= ((i + 1) * cellSize)) {
+                    return i
+                }
             }
         }
+
+        const indexX = findRange(centerY)
+        const indexY = findRange(centerX)
         
-        return { indexX: findRange(centerX), indexY: findRange(centerY) }
+        return { indexX, indexY }
     }
 
     return { getColor, getSizes, crashWith, checkCell, move }
@@ -361,8 +370,8 @@ function Marker(type, indexX, indexY) {
 
     // Draws an X on the provided cell.
     const drawX = function() {
-        const x = indexX * cellSize
-        const y = indexY * cellSize
+        const x = indexY * cellSize
+        const y = indexX * cellSize
         
         ctx.lineWidth = 3
         ctx.beginPath()
@@ -374,8 +383,8 @@ function Marker(type, indexX, indexY) {
     }
 
     const drawO = function() {
-        const x = cellSize * indexX + cellSize * 0.5
-        const y = cellSize * indexY + cellSize * 0.5
+        const x = cellSize * indexY + cellSize * 0.5
+        const y = cellSize * indexX + cellSize * 0.5
 
         ctx.lineWidth = 3
         ctx.strokeStyle = "#ddd"
@@ -386,7 +395,7 @@ function Marker(type, indexX, indexY) {
     }
 
     // Returns a drawing function based on the provided arguments.
-    return { draw: (type === "X" ? drawX : drawO) }
+    return { draw: (type === "X" ? drawX : (type === "O" ? drawO : () => {})) }
 }
 
 const TurnManager = (function() {
@@ -400,32 +409,30 @@ const TurnManager = (function() {
 
     const getCurrentPlayer = () => (currentPlayer)
 
-
     // Triggered when anybody places a marker.
     PubSub.subscribe("marker:placed", () => {
-        checkWin() // Checks if somebody won.
+        let result = checkWin(GameManager.getMarkerMapping()) // Checks if somebody won.
+        if (result) {
+            win(result)
+            return
+        }
+
         pickPlayer() // Picks the next player.
 
-        // If the (human) player is picked, the next turn is their's after 3s. Increases the difficulty :p
+        // If the (human) player is picked, the next turn is theirs after 3s. Increases the difficulty :p
         if (currentPlayer === player) {
-            setTimeout(() => PubSub.publish("turn:player"), 3000)
+            GameManager.togglePlaceMarker(true)
         }
         else {
             GameManager.togglePlaceMarker(false) // Prevents the (human) player from playing.
-            setTimeout(() => PubSub.publish("turn:computer"), 3000) // Computer's turn after 3s. Raises difficulty as well.
+            setTimeout(() => PubSub.publish("turn:computer"), 1500) // Computer's turn after 3s. Raises difficulty as well.
         }
     })
-
-    // Allows the player to place a marker after the 3s have passed.
-    PubSub.subscribe("turn:player", () => {
-        GameManager.togglePlaceMarker(true)
-    })
-
 
     // Computer's actions.
     PubSub.subscribe("turn:computer", () => {
         const markerMapping = GameManager.getMarkerMapping()
-        AI.makeRandomMove(markerMapping)
+        AI.makeMove(markerMapping)
     })    
 
     // Checks if the player can even place a marker on the cell they're on before publishing the event of placing.
@@ -436,31 +443,111 @@ const TurnManager = (function() {
     })
 
     // Checks if somebody's won based on the hardcoded patterns.
-    const checkWin = function() {
-        const board = GameManager.getMarkerMapping()
-        for (let marker of ['X', 'O']) {
-            if (patterns.some(pattern => 
-                pattern.every(([x, y]) => board[`${x},${y}`] === marker)
-            )) {
-                console.log(marker.toUpperCase(), "WON")
-                // Stops the game after everything is rendered in order to give the game a chance to render the final move.
-                PubSub.subscribe("rendering:ended", GameManager.endGame) 
-            }
+    const checkWin = function(board) {
+        for (let marker of ["X", "O"]) {
+            if (patterns.some(pattern => { 
+                return pattern.every(([i, j]) => board[i][j] === marker)
+            })) return marker
         }
+        
+        if (board.every(row => row.every(cell => cell !== ""))) return "tie"
+
         return null // No winner yet.
     }
 
-    return { getCurrentPlayer }
+    const win = function(marker) {
+        console.log(marker.toUpperCase(), "WON")
+        // Stops the game after everything is rendered in order to give the game a chance to render the final move.
+        Renderer.render()
+        GameManager.endGame()
+    }
+
+    return { getCurrentPlayer, checkWin }
 })()
 
-// The AI. Currently picks random moves. Might add minimax later.
+// Your opponent. Can be very smart, can be very dumb.
 const AI = (function() {
+    const scores = {
+        "X": player.marker === "X" ? -1 : 1,
+        "O": player.marker === "O" ? -1 : 1,
+        'tie': 0
+    }
+
+    const difficulty = {
+        "normal": 0.5,
+        "hard": 0.2,
+        "impossible": 0,
+    }
+
+    const makeMove = function(board) {
+        const dif = difficulty[player.difficulty]
+        console.log(dif)
+        if (Math.random() < difficulty[player.difficulty]) makeRandomMove(board)
+        else makeBestMove(board)
+    }
+
+    const makeBestMove = function(board) {
+        let bestScore = -Infinity
+        let move = null
+    
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                if (board[i][j] === '') {
+                    board[i][j] = computer.marker
+                    let score = minimax(board, 0, false) 
+                    board[i][j] = ''
+                    if (score > bestScore) {
+                        bestScore = score
+                        move = { i, j }
+                    }
+                }
+            }
+        }
+        board[move.i][move.j] = computer.marker 
+        PubSub.publish("marker:placed") 
+    }    
+
+    const minimax = function(board, depth, isMaximizing) {
+        let result = TurnManager.checkWin(board)
+        if (result !== null) { // "X", "O", "tie"
+            return scores[result]
+        }
+
+        if (isMaximizing) {
+            let bestScore = -Infinity;
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    if (board[i][j] === '') {
+                        board[i][j] = computer.marker
+                        let score = minimax(board, depth + 1, false)
+                        board[i][j] = ''
+                        bestScore = Math.max(score, bestScore)
+                    }
+                }
+            }
+            return bestScore
+
+        } else {
+            let bestScore = Infinity
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    if (board[i][j] === '') {
+                        board[i][j] = player.marker;
+                        let score = minimax(board, depth + 1, true)
+                        board[i][j] = ''
+                        bestScore = Math.min(score, bestScore)
+                    }
+                }
+            }
+            return bestScore
+        }
+    }
+
     const makeRandomMove = function(markerMapping) {
         const emptyCells = []
         for (let i = 0; i < 3; i++) {
             for (let j = 0; j < 3; j++) {
-                let coords = `${i},${j}`
-                if (!markerMapping[coords]) {
+                if (!markerMapping[i][j]) {
                     emptyCells.push([i, j])
                 }
             }
@@ -468,15 +555,14 @@ const AI = (function() {
         if (emptyCells.length > 0) {
             const [x, y] = emptyCells[Math.floor(Math.random() * emptyCells.length)]
             GameManager.changeMarkerMapping(x, y)
-            console.log("AI picked a random move: ", x, y)
             PubSub.publish("marker:placed")
             return true
         }
         return false
     }
+    
 
-
-    return { makeRandomMove }
+    return { makeMove }
 
 })()
 
@@ -485,9 +571,14 @@ GameManager.init()
 
 /* TODO
 
--Add minimax.
+-Add minimax. DONE
 -Add UI.
 -Add the ability to chose your marker.
 -Add the ability to restart.
-
+-Stop everything when the game ends (there are some bugs related to this). DONE
+-Add AI difficulties. DONE
+-Add obstacle difficulties.
 */
+
+
+
