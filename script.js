@@ -99,16 +99,17 @@ const UIManager = (function() {
 
 const GameManager = (function() {
     const canvas = document.querySelector("canvas")
-    const fps = 240
     canvas.width = 540
     canvas.height = 540
     const cellSize = canvas.width / 3
     const ctx = canvas.getContext("2d")
-    let frameNo = 0
-    let interval
     let canPlaceMarker
     let gameRunning = false
     let boundEvents = false
+    let secondsPassed
+    let oldTimeStamp
+    let fps
+    let frameNo = 0
     
     const keys = { "ArrowUp": false, "ArrowDown": false, "ArrowRight": false, "ArrowLeft": false,
                    "w": false, "s": false, "a": false, "d": false }
@@ -122,7 +123,6 @@ const GameManager = (function() {
 
     const init = function() {
         currentObstacles = []
-        interval = setInterval(Renderer.render, 1000 / fps) // Updates the game so that it runs at fps (the variable) frames per second.
         PubSub.subscribe("game:ended", endGame)
         AI.setScores()
         PlayerObj.resetPos()
@@ -135,6 +135,17 @@ const GameManager = (function() {
         ))
         if (player.getMarker() === "O") PubSub.publish("marker:placed")
         gameRunning = true
+        window.requestAnimationFrame(gameLoop)
+    }
+
+    const gameLoop = function(timeStamp) {
+        if (!gameRunning) return
+        secondsPassed = Math.min((timeStamp - oldTimeStamp) / 1000, 0.1)
+        oldTimeStamp = timeStamp
+        fps = Math.round(1 / secondsPassed)
+        frameNo++
+        Renderer.render()
+        window.requestAnimationFrame(gameLoop)
     }
 
     const bindEvents = function() {
@@ -170,8 +181,6 @@ const GameManager = (function() {
     }
 
     const endGame = function() {
-        clearInterval(interval)
-        clearTimeout()
         frameNo = 0
         markerMapping.forEach((row, i) => markerMapping[i] = ["","",""])
         Object.keys(keys).forEach(key => keys[key] = false)
@@ -186,8 +195,6 @@ const GameManager = (function() {
 
     const setObstacles = (newObstacles) => (currentObstacles = newObstacles)
 
-    const incFrames = () => frameNo++
-
     const getFrames = () => (frameNo)
 
     const getFps = () => (fps)
@@ -195,6 +202,10 @@ const GameManager = (function() {
     const getKeys = () => (keys)
 
     const getGameRunning = () => (gameRunning)
+
+    const getSeconds = () => (secondsPassed)
+
+    const getTotalTime = () => (oldTimeStamp)
 
     const togglePlaceMarker = function(newOption) {
         canPlaceMarker = newOption
@@ -209,7 +220,7 @@ const GameManager = (function() {
         return false
     }
 
-    return { bindEvents, init, getCanvasData, getMarkerMapping, getObstacles, incFrames, getFrames, changeMarkerMapping, setObstacles, getFps, getKeys, togglePlaceMarker, endGame, getGameRunning }
+    return { getTotalTime, getSeconds, bindEvents, init, getCanvasData, getMarkerMapping, getObstacles, getFrames, changeMarkerMapping, setObstacles, getFps, getKeys, togglePlaceMarker, endGame, getGameRunning }
 })()
 
 // Handles the rendering of the canvas.
@@ -217,7 +228,6 @@ const Renderer = (function() {
     const { canvas, cellSize, ctx } = GameManager.getCanvasData()
 
     const render = function () {
-        GameManager.incFrames()
         ctx.clearRect(0, 0, canvas.width, canvas.height) // Clears the canvas
         renderMarkers()
         renderGrid()
@@ -280,15 +290,22 @@ const Renderer = (function() {
 
 const StateManager = (function() {
     const difficulties = {
-        "normal": {minSize: 10, maxSize: 30, minSpeed: 0.25, maxSpeed: 1, frequency: 3},
-        "hard": {minSize: 20, maxSize: 40, minSpeed: 0.75, maxSpeed: 1.25, frequency: 5},
-        "impossible": {minSize: 25, maxSize: 50, minSpeed: 1.25, maxSpeed: 1.5, frequency: 6}
+        "normal": {minSize: 20, maxSize: 30, minSpeed: 120, maxSpeed: 200, frequency: 0.5},
+        "hard": {minSize: 20, maxSize: 40, minSpeed: 200, maxSpeed: 400, frequency: 0.25},
+        "impossible": {minSize: 20, maxSize: 40, minSpeed: 270, maxSpeed: 440, frequency: 0.15}
     }
 
+    // Returns true every n seconds.
     const everyInterval = function(n) {
-        if ((GameManager.getFrames() / n) % 1 === 0) { return true }
+        const totalSecondsPassed = GameManager.getTotalTime() / 1000
+        
+        // Check if the time that has passed is a multiple of n seconds
+        if (Math.floor(totalSecondsPassed / n) > Math.floor((totalSecondsPassed - GameManager.getSeconds()) / n)) {
+            return true
+        }
         return false
     }
+    
 
     // Checks crashes, removes out of bound obstacles, and adds new obstacles.
     PubSub.subscribe("rendering:ended", () => {
@@ -301,7 +318,8 @@ const StateManager = (function() {
         })
         
         let dif = difficulties[UIManager.getInput().obsDiff] // Creates a new obstacle every fps / 4 frames and on the first frame.
-        if (everyInterval(GameManager.getFps() / dif.frequency)) {
+        if (everyInterval(dif.frequency)) {
+            // console.log(dif.seconds, "Passed. spawning an obstacle")
             const obstacle = Obstacle(dif.minSize, dif.maxSize, dif.minSpeed, dif.maxSpeed, "green")
             obstacles.push(obstacle)
         }
@@ -324,14 +342,15 @@ const PlayerObj = (function(size, color, posX, posY, speed) {
     }
 
     const move = function(keys) {
+        const secondsPassed = GameManager.getSeconds() || 0
         let speedX = 0
         let speedY = 0
         if (keys && (keys["ArrowLeft"] || keys["a"])) { speedX = -speed } // All this is to handle fluid movement in all 8 directions and update the player's location.
         if (keys && (keys["ArrowRight"] || keys["d"])) { speedX = speed }
         if (keys && (keys["ArrowUp"] || keys["w"])) { speedY = -speed }
         if (keys && (keys["ArrowDown"] || keys["s"])) { speedY = speed }
-        x += speedX
-        y += speedY
+        x += (speedX * secondsPassed)
+        y += (speedY * secondsPassed)
         limit()
     }
 
@@ -380,10 +399,9 @@ const PlayerObj = (function(size, color, posX, posY, speed) {
 
     return { getColor, getSizes, crashWith, checkCell, move, resetPos }
 
-})(30, "red", 255, 255, 1)
+})(30, "red", 255, 255, 200)
 
 function Obstacle(min, max, minSpeed, maxSpeed, color, direction="") {
-    
     const canvas = Renderer.data().canvas
     const directions = ["right", "left", "top", "bottom"] // Obstacle possible directions
     const size = Math.random() * (max - min) + min // Picks a random size for the obstacle based on the specified range.
@@ -397,7 +415,6 @@ function Obstacle(min, max, minSpeed, maxSpeed, color, direction="") {
     const getSpeed = () => (speed)
     const getColor = () => (color)
     const getSizes = () => ({ x, y, size })
-    const getDiff = () => (difficulty)
 
     // Picks a random value between two specified values.
     const rand = function(r1, r2) {
@@ -433,12 +450,13 @@ function Obstacle(min, max, minSpeed, maxSpeed, color, direction="") {
     generateSpawnLocation()
 
     const move = function() {
-        x += speedX
-        y += speedY
+        let secondsPassed = GameManager.getSeconds() || 1
+        x += (speedX * secondsPassed)
+        y += (speedY * secondsPassed)
     }
     // Borrows those methods from the component factory.
     
-    return { getColor, getSizes, move, getSpeed, getDiff }
+    return { getColor, getSizes, move, getSpeed }
 }
 
 function Marker(type, indexX, indexY) {
@@ -581,14 +599,13 @@ const AI = (function() {
     let scores
 
     const difficulty = {
-        "normal": 0.5,
+        "normal": 0.35,
         "hard": 0.2,
         "impossible": 0,
     }
 
     const makeMove = function(board) {
         const dif = difficulty[UIManager.getInput().aiDiff]
-        console.log(dif)
         if (Math.random() < dif) makeRandomMove(board)
         else makeBestMove(board)
     }
